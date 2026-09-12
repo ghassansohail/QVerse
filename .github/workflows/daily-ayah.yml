@@ -16,7 +16,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: setup-python@v5
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -27,7 +27,7 @@ jobs:
       - name: Send Email & Advance Ayah
         env:
           SMTP_HOST: smtp.gmail.com
-          SMTP_PORT: 465
+          SMTP_PORT: '465'
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_FROM: ${{ secrets.SMTP_USER }}
