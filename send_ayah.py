@@ -1,5 +1,7 @@
+import html
 import json
 import os
+import re
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -7,7 +9,6 @@ import requests
 
 PROGRESS_FILE = "progress.json"
 
-# Surah lengths across the 114 Surahs
 SURAH_LENGTHS = [
     7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99, 128,
     111, 110, 98, 135, 112, 78, 118, 64, 77, 227, 93, 88, 69, 60, 34, 30, 73,
@@ -17,6 +18,11 @@ SURAH_LENGTHS = [
     26, 30, 20, 15, 21, 11, 8, 8, 19, 5, 8, 8, 11, 11, 8, 3, 9, 5, 4, 7, 3,
     6, 3, 5, 4, 5, 6
 ]
+
+def clean_html(raw_html: str) -> str:
+    cleanr = re.compile('<.*?>')
+    cleaned = re.sub(cleanr, '', raw_html)
+    return html.unescape(cleaned).strip()
 
 def load_progress():
     if os.path.exists(PROGRESS_FILE):
@@ -39,16 +45,35 @@ def main():
     ayah = state["ayah"]
     verse_key = f"{surah}:{ayah}"
 
-    # 1. Fetch Surah Name & Indo-Pak script from Quran.com API
-    chapter_info = requests.get(f"https://api.quran.com/api/v4/chapters/{surah}").json()["chapter"]
-    surah_name = chapter_info["name_simple"]
+    # 1. Fetch Surah Name
+    ch_res = requests.get(f"https://api.quran.com/api/v4/chapters/{surah}", timeout=15)
+    ch_res.raise_for_status()
+    surah_name = ch_res.json()["chapter"]["name_simple"]
 
-    ar_res = requests.get(f"https://api.quran.com/api/v4/quran/verses/indopak?verse_key={verse_key}").json()
-    arabic_text = ar_res["verses"][0]["text_indopak"]
+    # 2. Fetch Pakistani Indo-Pak script & Translation (131 = Saheeh International English)
+    verse_url = (
+        f"https://api.quran.com/api/v4/verses/by_key/{verse_key}"
+        f"?language=en&words=false&translations=131&fields=text_indopak"
+    )
+    v_res = requests.get(verse_url, timeout=15)
+    v_res.raise_for_status()
+    v_data = v_res.json().get("verse", {})
 
-    # 2. Fetch Translation (131: Saheeh International English | 234: Jalandhri Urdu)
-    tr_res = requests.get(f"https://api.quran.com/api/v4/quran/translations/131?verse_key={verse_key}").json()
-    translation_text = tr_res["translations"][0]["text"]
+    arabic_text = v_data.get("text_indopak", "")
+    
+    # Fallback to pure indopak endpoint if field missing
+    if not arabic_text:
+        fallback_ar = requests.get(f"https://api.quran.com/api/v4/quran/verses/indopak?verse_key={verse_key}", timeout=15).json()
+        arabic_text = fallback_ar["verses"][0]["text_indopak"]
+
+    translations = v_data.get("translations", [])
+    if translations:
+        translation_text = clean_html(translations[0].get("text", ""))
+    else:
+        # Direct translation endpoint fallback
+        tr_res = requests.get(f"https://api.quran.com/api/v4/quran/translations/131?verse_key={verse_key}", timeout=15).json()
+        raw_text = tr_res["translations"][0]["text"] if tr_res.get("translations") else "Translation unavailable."
+        translation_text = clean_html(raw_text)
 
     # 3. Compile Pakistani-Styled HTML
     html_body = f"""<!DOCTYPE html>
@@ -101,7 +126,7 @@ def main():
 </head>
 <body>
   <div class="container">
-    <div class="header">Surah {surah_name} ({surah}:{ayah})</div>
+    <div class="header">Surah {surah_name} ({verse_key})</div>
     <div class="arabic">{arabic_text}</div>
     <div class="translation">{translation_text}</div>
   </div>
@@ -119,7 +144,7 @@ def main():
         server.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
         server.sendmail(os.environ["EMAIL_FROM"], [os.environ["EMAIL_TO"]], msg.as_string())
 
-    # 5. Persist progress for tomorrow
+    # 5. Persist progress for next run
     save_next_progress(surah, ayah)
     print(f"Sent {verse_key}. Updated progress.json.")
 
