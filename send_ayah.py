@@ -47,29 +47,30 @@ def main():
     ayah = state["ayah"]
     verse_key = f"{surah}:{ayah}"
 
-    # 1. Fetch Surah Details
-    ch_res = requests.get(f"https://api.quran.com/api/v4/chapters/{surah}", timeout=15)
-    ch_res.raise_for_status()
-    surah_data = ch_res.json()["chapter"]
-    surah_name = surah_data["name_simple"]
-    surah_arabic = surah_data["name_arabic"]
+    # Single atomic request for:
+    # 1. quran-indopak (Authentic Pakistani Nastaliq script)
+    # 2. en.sahih (English: Saheeh International)
+    # 3. ur.jalandhry (Urdu: Fateh Muhammad Jalandhri)
+    api_url = f"https://api.alquran.cloud/v1/ayah/{verse_key}/editions/quran-indopak,en.sahih,ur.jalandhry"
+    
+    response = requests.get(api_url, timeout=20)
+    response.raise_for_status()
+    payload = response.json()
 
-    # 2. Fetch Indo-Pak Script
-    indopak_res = requests.get(f"https://api.quran.com/api/v4/quran/verses/indopak?verse_key={verse_key}", timeout=15)
-    indopak_res.raise_for_status()
-    arabic_text = indopak_res.json()["verses"][0]["text_indopak"]
+    if payload.get("code") != 200 or not payload.get("data"):
+        raise ValueError(f"API failed to fetch ayah {verse_key}: {payload.get('status')}")
 
-    # 3. Fetch English Translation (ID 131: Saheeh International)
-    en_res = requests.get(f"https://api.quran.com/api/v4/verses/by_key/{verse_key}?translations=131", timeout=15).json()
-    translations_en = en_res.get("verse", {}).get("translations", [])
-    english_text = clean_html(translations_en[0]["text"]) if translations_en else "Translation unavailable."
+    data_editions = payload["data"]
 
-    # 4. Fetch Urdu Translation (ID 234: Fateh Muhammad Jalandhri)
-    ur_res = requests.get(f"https://api.quran.com/api/v4/verses/by_key/{verse_key}?translations=234", timeout=15).json()
-    translations_ur = ur_res.get("verse", {}).get("translations", [])
-    urdu_text = clean_html(translations_ur[0]["text"]) if translations_ur else "اردو ترجمہ دستیاب نہیں ہے۔"
+    # Extract texts
+    arabic_text = data_editions[0]["text"]
+    english_text = clean_html(data_editions[1]["text"])
+    urdu_text = clean_html(data_editions[2]["text"])
 
-    # 5. Build Styled Email
+    surah_name_en = data_editions[0]["surah"]["englishName"]
+    surah_name_ar = data_editions[0]["surah"]["name"]
+
+    # Styled Email Card
     html_body = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -105,7 +106,7 @@ def main():
     .arabic {{
       font-family: 'Noto Nastaliq Urdu', 'PDMS Saleem Quranic', serif;
       font-size: 26px;
-      line-height: 2.3;
+      line-height: 2.4;
       text-align: right;
       direction: rtl;
       color: #0f172a;
@@ -136,8 +137,8 @@ def main():
 <body>
   <div class="container">
     <div class="header">
-      <span>Surah {surah_name} ({surah}:{ayah})</span>
-      <span style="font-family: 'Noto Nastaliq Urdu', serif; font-size: 15px;">{surah_arabic}</span>
+      <span>Surah {surah_name_en} ({surah}:{ayah})</span>
+      <span style="font-family: 'Noto Nastaliq Urdu', serif; font-size: 15px;">{surah_name_ar}</span>
     </div>
     
     <div class="arabic">{arabic_text}</div>
@@ -147,9 +148,9 @@ def main():
 </body>
 </html>"""
 
-    # 6. Send Email
+    # Dispatch Email
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Daily Ayah — Surah {surah_name} ({verse_key})"
+    msg["Subject"] = f"Daily Ayah — Surah {surah_name_en} ({verse_key})"
     msg["From"] = os.environ["EMAIL_FROM"]
     msg["To"] = os.environ["EMAIL_TO"]
     msg.attach(MIMEText(html_body, "html"))
@@ -158,9 +159,9 @@ def main():
         server.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
         server.sendmail(os.environ["EMAIL_FROM"], [os.environ["EMAIL_TO"]], msg.as_string())
 
-    # 7. Update Progress
+    # Update state
     save_next_progress(surah, ayah)
-    print(f"Sent {verse_key}. Progress updated.")
+    print(f"Delivered {verse_key} and incremented progress.")
 
 if __name__ == "__main__":
     main()
