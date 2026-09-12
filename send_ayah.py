@@ -20,8 +20,10 @@ SURAH_LENGTHS = [
 ]
 
 def clean_html(raw_html: str) -> str:
-    cleanr = re.compile('<.*?>')
-    cleaned = re.sub(cleanr, '', raw_html)
+    if not raw_html:
+        return ""
+    cleanr = re.compile(r"<.*?>")
+    cleaned = re.sub(cleanr, "", raw_html)
     return html.unescape(cleaned).strip()
 
 def load_progress():
@@ -45,43 +47,35 @@ def main():
     ayah = state["ayah"]
     verse_key = f"{surah}:{ayah}"
 
-    # 1. Fetch Surah Name
+    # 1. Fetch Surah Details
     ch_res = requests.get(f"https://api.quran.com/api/v4/chapters/{surah}", timeout=15)
     ch_res.raise_for_status()
-    surah_name = ch_res.json()["chapter"]["name_simple"]
+    surah_data = ch_res.json()["chapter"]
+    surah_name = surah_data["name_simple"]
+    surah_arabic = surah_data["name_arabic"]
 
-    # 2. Fetch Pakistani Indo-Pak script & Translation (131 = Saheeh International English)
-    verse_url = (
-        f"https://api.quran.com/api/v4/verses/by_key/{verse_key}"
-        f"?language=en&words=false&translations=131&fields=text_indopak"
-    )
-    v_res = requests.get(verse_url, timeout=15)
-    v_res.raise_for_status()
-    v_data = v_res.json().get("verse", {})
+    # 2. Fetch Indo-Pak Script
+    indopak_res = requests.get(f"https://api.quran.com/api/v4/quran/verses/indopak?verse_key={verse_key}", timeout=15)
+    indopak_res.raise_for_status()
+    arabic_text = indopak_res.json()["verses"][0]["text_indopak"]
 
-    arabic_text = v_data.get("text_indopak", "")
-    
-    # Fallback to pure indopak endpoint if field missing
-    if not arabic_text:
-        fallback_ar = requests.get(f"https://api.quran.com/api/v4/quran/verses/indopak?verse_key={verse_key}", timeout=15).json()
-        arabic_text = fallback_ar["verses"][0]["text_indopak"]
+    # 3. Fetch English Translation (ID 131: Saheeh International)
+    en_res = requests.get(f"https://api.quran.com/api/v4/verses/by_key/{verse_key}?translations=131", timeout=15).json()
+    translations_en = en_res.get("verse", {}).get("translations", [])
+    english_text = clean_html(translations_en[0]["text"]) if translations_en else "Translation unavailable."
 
-    translations = v_data.get("translations", [])
-    if translations:
-        translation_text = clean_html(translations[0].get("text", ""))
-    else:
-        # Direct translation endpoint fallback
-        tr_res = requests.get(f"https://api.quran.com/api/v4/quran/translations/131?verse_key={verse_key}", timeout=15).json()
-        raw_text = tr_res["translations"][0]["text"] if tr_res.get("translations") else "Translation unavailable."
-        translation_text = clean_html(raw_text)
+    # 4. Fetch Urdu Translation (ID 234: Fateh Muhammad Jalandhri)
+    ur_res = requests.get(f"https://api.quran.com/api/v4/verses/by_key/{verse_key}?translations=234", timeout=15).json()
+    translations_ur = ur_res.get("verse", {}).get("translations", [])
+    urdu_text = clean_html(translations_ur[0]["text"]) if translations_ur else "اردو ترجمہ دستیاب نہیں ہے۔"
 
-    # 3. Compile Pakistani-Styled HTML
+    # 5. Build Styled Email
     html_body = f"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap');
     body {{
       background-color: #f8fafc;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -89,51 +83,71 @@ def main():
       padding: 24px;
     }}
     .container {{
-      max-width: 580px;
+      max-width: 620px;
       margin: 0 auto;
       background: #ffffff;
       border: 1px solid #e2e8f0;
       border-radius: 12px;
       padding: 32px 28px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     }}
     .header {{
+      display: flex;
+      justify-content: space-between;
       font-size: 13px;
       font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
+      letter-spacing: 1px;
       color: #64748b;
-      margin-bottom: 24px;
+      text-transform: uppercase;
       border-bottom: 1px solid #f1f5f9;
       padding-bottom: 12px;
+      margin-bottom: 24px;
     }}
     .arabic {{
       font-family: 'Noto Nastaliq Urdu', 'PDMS Saleem Quranic', serif;
-      font-size: 28px;
+      font-size: 26px;
       line-height: 2.3;
       text-align: right;
       direction: rtl;
       color: #0f172a;
-      margin: 20px 0 30px 0;
+      margin: 20px 0 28px 0;
       word-spacing: 2px;
     }}
-    .translation {{
-      font-size: 16px;
+    .urdu {{
+      font-family: 'Noto Nastaliq Urdu', serif;
+      font-size: 18px;
+      line-height: 2.2;
+      text-align: right;
+      direction: rtl;
+      color: #1e293b;
+      margin-bottom: 24px;
+      background-color: #f8fafc;
+      padding: 16px;
+      border-radius: 8px;
+      border-right: 4px solid #0f172a;
+    }}
+    .english {{
+      font-size: 15px;
       line-height: 1.7;
       color: #334155;
+      padding-top: 8px;
     }}
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="header">Surah {surah_name} ({verse_key})</div>
+    <div class="header">
+      <span>Surah {surah_name} ({surah}:{ayah})</span>
+      <span style="font-family: 'Noto Nastaliq Urdu', serif; font-size: 15px;">{surah_arabic}</span>
+    </div>
+    
     <div class="arabic">{arabic_text}</div>
-    <div class="translation">{translation_text}</div>
+    <div class="urdu">{urdu_text}</div>
+    <div class="english"><strong>English:</strong> {english_text}</div>
   </div>
 </body>
 </html>"""
 
-    # 4. Dispatch Email via SMTP
+    # 6. Send Email
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"Daily Ayah — Surah {surah_name} ({verse_key})"
     msg["From"] = os.environ["EMAIL_FROM"]
@@ -144,9 +158,9 @@ def main():
         server.login(os.environ["SMTP_USER"], os.environ["SMTP_PASS"])
         server.sendmail(os.environ["EMAIL_FROM"], [os.environ["EMAIL_TO"]], msg.as_string())
 
-    # 5. Persist progress for next run
+    # 7. Update Progress
     save_next_progress(surah, ayah)
-    print(f"Sent {verse_key}. Updated progress.json.")
+    print(f"Sent {verse_key}. Progress updated.")
 
 if __name__ == "__main__":
     main()
