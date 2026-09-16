@@ -52,8 +52,8 @@ def main():
 
     verse_key = f"{surah}:{ayah}"
 
-    # Fetch Arabic Indo-Pak, English, and Urdu translations
-    url = f"https://api.alquran.cloud/v1/ayah/{verse_key}/editions/quran-indopak,en.sahih,ur.jalandhry"
+    # Fetch Arabic Simple (clean universal diacritics), English (Saheeh Intl), and Urdu (Jalandhry)
+    url = f"https://api.alquran.cloud/v1/ayah/{verse_key}/editions/quran-simple,en.sahih,ur.jalandhry"
     resp = requests.get(url, timeout=15)
     resp.raise_for_status()
     payload = resp.json().get("data", [])
@@ -69,8 +69,8 @@ def main():
     text_content = (
         f"*Surah {surah_name} ({verse_key})*\n\n"
         f"{arabic_text}\n\n"
-        f"*اردو:*\n{urdu_text}\n\n"
-        f"*English:*\n{english_text}"
+        f"*اردو (مولانا جالندھری):*\n{urdu_text}\n\n"
+        f"*English (Saheeh Intl):*\n{english_text}"
     )
 
     # Large print-friendly HTML template
@@ -80,11 +80,36 @@ def main():
   <meta charset="utf-8">
   <title>Surah {surah_name} ({verse_key})</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Noto+Nastaliq+Urdu:wght@500;700&display=swap');
     
     @page {{
       size: A4 portrait;
       margin: 15mm;
+    }}
+
+    @media only screen and (max-width: 600px) {{
+      body {{
+        padding: 10px !important;
+      }}
+      .page-card {{
+        padding: 18px !important;
+        border-radius: 8px !important;
+      }}
+      .arabic {{
+        font-size: 26px !important;
+        line-height: 2.1 !important;
+        margin-bottom: 20px !important;
+      }}
+      .urdu {{
+        font-size: 19px !important;
+        line-height: 2.0 !important;
+        padding: 14px 16px !important;
+        margin-bottom: 20px !important;
+      }}
+      .english {{
+        font-size: 15px !important;
+        line-height: 1.6 !important;
+      }}
     }}
 
     @media print {{
@@ -139,7 +164,7 @@ def main():
       </tr>
     </table>
 
-    <div class="arabic" style="font-family:'Noto Nastaliq Urdu', 'PDMS Saleem Quranic', serif; font-size:32px; line-height:2.4; text-align:right; direction:rtl; color:#000000; margin-bottom:28px; word-spacing:3px;">
+    <div class="arabic" style="font-family:'Amiri', 'Traditional Arabic', 'Scheherazade New', 'Noto Naskh Arabic', serif; font-size:30px; line-height:2.3; text-align:right; direction:rtl; color:#000000; margin-bottom:28px; word-spacing:2px;">
       {arabic_text}
     </div>
 
