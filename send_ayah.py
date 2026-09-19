@@ -530,7 +530,7 @@ def generate_ayah_cards(surah_name: str, surah_arabic: str, verse_key: str, ayah
             page.evaluate("() => document.fonts.ready")
 
             card = page.locator("#ayah-card")
-            rendered_images.append(card.screenshot(type="png"))
+            rendered_images.append(card.screenshot(type="jpeg", quality=95))
             page.close()
 
         browser.close()
@@ -540,9 +540,9 @@ def generate_ayah_cards(surah_name: str, surah_arabic: str, verse_key: str, ayah
 # Alias for backwards compatibility
 generate_ayah_card = generate_ayah_cards
 
-def upload_image_to_host(image_bytes: bytes, filename: str = "qverse_ayah.png", api_key: str = None) -> str:
+def upload_image_to_host(image_bytes: bytes, filename: str = "qverse_ayah.jpg", api_key: str = None) -> str:
     """
-    Uploads PNG card to ImgBB to generate a public URL required by Meta Instagram API.
+    Uploads JPEG card to ImgBB to generate a public URL required by Meta Instagram API.
     Get a free API key at https://api.imgbb.com/
     """
     if not api_key:
@@ -553,7 +553,7 @@ def upload_image_to_host(image_bytes: bytes, filename: str = "qverse_ayah.png", 
 
     url = "https://api.imgbb.com/1/upload"
     payload = {"key": api_key}
-    files = {"image": (filename, image_bytes, "image/png")}
+    files = {"image": (filename, image_bytes, "image/jpeg")}
     
     resp = requests.post(url, data=payload, files=files, timeout=30)
     resp.raise_for_status()
@@ -884,18 +884,18 @@ def main():
     msg_alt.attach(MIMEText(text_content, "plain", "utf-8"))
     msg_alt.attach(MIMEText(html_body, "html", "utf-8"))
 
-    # Attach picture(s) both as inline CID (for email view) and downloadable PNG
+    # Attach picture(s) both as inline CID (for email view) and downloadable JPEG
     if len(rendered_cards) == 1:
-        img_attachment = MIMEImage(rendered_cards[0], _subtype="png")
+        img_attachment = MIMEImage(rendered_cards[0], _subtype="jpeg")
         img_attachment.add_header("Content-ID", "<daily_ayah_image>")
-        img_attachment.add_header("Content-Disposition", "inline", filename=f"QVerse_Surah_{surah}_{ayah}.png")
+        img_attachment.add_header("Content-Disposition", "inline", filename=f"QVerse_Surah_{surah}_{ayah}.jpg")
         msg_root.attach(img_attachment)
     else:
         for i, card_bytes in enumerate(rendered_cards):
             part_name = "Arabic" if i == 0 else "Translations"
             cid = f"daily_ayah_image_{i+1}"
-            filename = f"QVerse_Surah_{surah}_{ayah}_part{i+1}_{part_name}.png"
-            img_attachment = MIMEImage(card_bytes, _subtype="png")
+            filename = f"QVerse_Surah_{surah}_{ayah}_part{i+1}_{part_name}.jpg"
+            img_attachment = MIMEImage(card_bytes, _subtype="jpeg")
             img_attachment.add_header("Content-ID", f"<{cid}>")
             img_attachment.add_header("Content-Disposition", "inline", filename=filename)
             msg_root.attach(img_attachment)
@@ -949,7 +949,7 @@ def main():
         try:
             hosted_urls = []
             for i, card_bytes in enumerate(rendered_cards):
-                fn = f"qverse_{surah}_{ayah}_p{i+1}.png"
+                fn = f"qverse_{surah}_{ayah}_p{i+1}.jpg"
                 hosted_url = upload_image_to_host(card_bytes, filename=fn)
                 print(f"Card image {i+1} hosted at: {hosted_url}")
                 hosted_urls.append(hosted_url)
