@@ -589,11 +589,9 @@ def post_to_instagram(image_urls: str | list[str], caption: str, ig_user_id: str
             "access_token": access_token
         }
         resp = requests.post(container_url, data=container_params, timeout=30)
-        resp.raise_for_status()
+        if not resp.ok:
+            raise Exception(f"Failed to create Instagram media container ({resp.status_code}): {resp.text}")
         creation_id = resp.json().get("id")
-
-        if not creation_id:
-            raise Exception(f"Failed to create Instagram media container: {resp.text}")
 
         time.sleep(4)
 
@@ -603,7 +601,8 @@ def post_to_instagram(image_urls: str | list[str], caption: str, ig_user_id: str
             "access_token": access_token
         }
         pub_resp = requests.post(publish_url, data=publish_params, timeout=30)
-        pub_resp.raise_for_status()
+        if not pub_resp.ok:
+            raise Exception(f"Failed to publish Instagram media ({pub_resp.status_code}): {pub_resp.text}")
         return pub_resp.json().get("id")
 
     else:
@@ -617,10 +616,9 @@ def post_to_instagram(image_urls: str | list[str], caption: str, ig_user_id: str
                 "access_token": access_token
             }
             resp = requests.post(container_url, data=child_params, timeout=30)
-            resp.raise_for_status()
+            if not resp.ok:
+                raise Exception(f"Failed to create carousel item {i+1} ({resp.status_code}): {resp.text}")
             child_id = resp.json().get("id")
-            if not child_id:
-                raise Exception(f"Failed to create Instagram carousel child container {i+1}: {resp.text}")
             child_container_ids.append(child_id)
             time.sleep(2)
 
@@ -636,10 +634,9 @@ def post_to_instagram(image_urls: str | list[str], caption: str, ig_user_id: str
             "access_token": access_token
         }
         resp = requests.post(parent_url, data=parent_params, timeout=30)
-        resp.raise_for_status()
+        if not resp.ok:
+            raise Exception(f"Failed to create carousel container ({resp.status_code}): {resp.text}")
         carousel_creation_id = resp.json().get("id")
-        if not carousel_creation_id:
-            raise Exception(f"Failed to create Instagram carousel container: {resp.text}")
 
         time.sleep(4)
 
@@ -650,7 +647,8 @@ def post_to_instagram(image_urls: str | list[str], caption: str, ig_user_id: str
             "access_token": access_token
         }
         pub_resp = requests.post(publish_url, data=publish_params, timeout=30)
-        pub_resp.raise_for_status()
+        if not pub_resp.ok:
+            raise Exception(f"Failed to publish carousel ({pub_resp.status_code}): {pub_resp.text}")
         return pub_resp.json().get("id")
 
 def main():
